@@ -79,8 +79,17 @@ make test
 ## Applying the nginx patch
 
 ```bash
+tar zxvf ./nginx-1.16.0.tar.gz
 cd /path/to/nginx-1.16.0
 patch -p1 < /path/to/mxl7lb/nginx-1.16.0.patch
+```
+### nginx compile/link
+
+```
+ ./configure --with-debug --prefix=../nginx --with-cc-opt="-I/opt/homebrew/opt/pcre/include -Wno-error=unused-but-set-variable" --with-ld-opt="-L/opt/homebrew/opt/pcre/lib"
+
+make
+make install
 ```
 
 ## License
