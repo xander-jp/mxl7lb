@@ -1,0 +1,58 @@
+@startuml ipc.png
+
+title nat observer (ipc)
+
+
+(nic\ndpdk) as nic
+
+package observer_module #ffc0c0 {
+  (statistics\nmodule\n[gRPC]interface) as o0 #ffff00
+  (config\nmodule\n[gRPC]interface) as o1 #cfcf00
+  (statistics\nipc\nshm) as o3
+  (config\nipc\nshm) as o2
+}
+
+package shared_memory #ffffff {
+  [/ipc_config] as shi
+  [/ipc_statistics] as she
+}
+
+
+package nat_core[x] #c0e0ff {
+  (nat\nmodule) as nat0
+
+  database "nat statistics" {
+    [nat\nstatistics] as st0
+  }
+
+  database "nat table" {
+    [nat\nmap] as mp0
+  }
+}
+package pmd_driver #c0ffff {
+  (pmd driver\ningress) as dri
+  (pmd driver\negress) as dre
+}
+
+
+nat0 o-up-o mp0: in process\n[Context]
+
+nic-up->dri: receive
+dri-right-->nat0: process\n(ingress)
+nat0-down-->dre: process\n(egress)
+dre-down->nic: send
+
+nat0 o-up-o st0: in process\n[Context]
+st0 o--> she
+
+o0 <-right-o n0: stat\n[gRPC]
+o1 <-right-o n0: config\n[gRPC]
+
+o0 <-- o3
+she --> o3
+o1 --> o2
+o2 --> shi
+shi o--> mp0
+
+
+@enduml

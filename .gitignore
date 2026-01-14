@@ -1,0 +1,45 @@
+# Build directories
+build/
+cmake-build-*/
+out/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Compiled binaries
+acceptor/acceptor
+client/client
+
+# Object files
+*.o
+*.obj
+
+# Libraries
+*.a
+*.so
+*.dylib
+
+# macOS
+.DS_Store
+._*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Go
+*.exe
+*.test
+*.out
+
+# Logs
+*.log
+
+# Unix domain socket
+/tmp/Xaccepted_socket

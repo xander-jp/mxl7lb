@@ -1,0 +1,221 @@
+diff --git a/src/core/nginx.h b/src/core/nginx.h
+index 71377bf1..f3af40d1 100644
+--- a/src/core/nginx.h
++++ b/src/core/nginx.h
+@@ -22,5 +22,7 @@
+ #define NGINX_VAR          "NGINX"
+ #define NGX_OLDPID_EXT     ".oldbin"
+ 
++#define NGX_X_BOTH_PROXY    (1)
++
+ 
+ #endif /* _NGINX_H_INCLUDED_ */
+diff --git a/src/core/ngx_connection.c b/src/core/ngx_connection.c
+index 33682532..a5b63524 100644
+--- a/src/core/ngx_connection.c
++++ b/src/core/ngx_connection.c
+@@ -1193,8 +1193,11 @@ ngx_close_connection(ngx_connection_t *c)
+ 
+     if (!c->shared) {
+         if (ngx_del_conn) {
++#ifdef NGX_X_BOTH_PROXY
++            ngx_del_conn(c, 0);
++#else
+             ngx_del_conn(c, NGX_CLOSE_EVENT);
+-
++#endif
+         } else {
+             if (c->read->active || c->read->disabled) {
+                 ngx_del_event(c->read, NGX_READ_EVENT, NGX_CLOSE_EVENT);
+diff --git a/src/event/ngx_event_connect.c b/src/event/ngx_event_connect.c
+index 1ffa7984..5b16c875 100644
+--- a/src/event/ngx_event_connect.c
++++ b/src/event/ngx_event_connect.c
+@@ -16,6 +16,14 @@ static ngx_int_t ngx_event_connect_set_transparent(ngx_peer_connection_t *pc,
+     ngx_socket_t s);
+ #endif
+ 
++#ifdef NGX_X_BOTH_PROXY
++extern ngx_int_t ngx_recv_fd(ngx_peer_connection_t *,int, int*);
++extern ngx_int_t ngx_send_proxy_request(ngx_peer_connection_t *,int, char);
++
++ngx_socket_t ngx_x_acceptor_socket = -1;
++
++#endif
++
+ 
+ ngx_int_t
+ ngx_event_connect_peer(ngx_peer_connection_t *pc)
+@@ -30,6 +38,7 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
+     ngx_socket_t       s;
+     ngx_event_t       *rev, *wev;
+     ngx_connection_t  *c;
++    ngx_socket_t       accepted_fd = -1;
+ 
+     rc = pc->get(pc, pc->data);
+     if (rc != NGX_OK) {
+@@ -38,6 +47,52 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
+ 
+     type = (pc->type ? pc->type : SOCK_STREAM);
+ 
++#ifdef NGX_X_BOTH_PROXY
++    {
++        ngx_msec_t delta = ngx_current_msec;
++        int sock;
++        struct sockaddr_un addr;
++
++        memset(&addr, 0, sizeof(struct sockaddr_un));
++        addr.sun_family = AF_UNIX;
++        snprintf(addr.sun_path,sizeof(addr.sun_path)-1, "/tmp/Xaccepted_socket"/* FIXME: from config. */);
++        if (ngx_x_acceptor_socket < 0){
++            if ((sock = socket(PF_UNIX, SOCK_STREAM, 0)) >= 0){
++                if (connect(sock, (struct sockaddr *) &addr, sizeof(struct sockaddr_un)) != 0) {
++                    ngx_log_debug2(NGX_LOG_DEBUG_EVENT, pc->log, 0, "connect() failed: %s:%d", strerror(errno), errno);
++                    close(sock);
++                }else{
++                    ngx_x_acceptor_socket = sock;
++                }
++            }
++        }
++        delta = ngx_current_msec - delta;
++        ngx_log_debug1(NGX_LOG_DEBUG_EVENT, pc->log, 0, "both proxy - connect to acceptor server : %lu\n", delta);
++
++        if (ngx_x_acceptor_socket > 0){
++            delta = ngx_current_msec;
++            if (ngx_send_proxy_request(pc, ngx_x_acceptor_socket, 0x80) != 0){
++                ngx_log_debug2(NGX_LOG_DEBUG_EVENT, pc->log, 0, "ngx_send_proxy_request() failed: %d: %s", strerror(errno), ngx_x_acceptor_socket);
++                close(ngx_x_acceptor_socket);
++                ngx_x_acceptor_socket = -1;
++            }else{
++                if (ngx_recv_fd(pc, ngx_x_acceptor_socket, &accepted_fd) == 0){
++                    delta = ngx_current_msec - delta;
++                    ngx_log_debug2(NGX_LOG_DEBUG_EVENT, pc->log, 0, "both proxy - recieve from acceptor server : %lu/%d", delta, accepted_fd);
++                    // FIXME: cached peer socket fd.
++                }else{
++                    ngx_log_debug2(NGX_LOG_DEBUG_EVENT, pc->log, 0, "ngx_recv_fd() failed: %d: %s", delta, ngx_x_acceptor_socket);
++                    close(ngx_x_acceptor_socket);
++                    ngx_x_acceptor_socket = -1;
++                }
++            }
++        }
++    }
++    //
++    err = 0;
++    level = 0;
++    s = accepted_fd;
++#else
+     s = ngx_socket(pc->sockaddr->sa_family, type, 0);
+ 
+     ngx_log_debug2(NGX_LOG_DEBUG_EVENT, pc->log, 0, "%s socket %d",
+@@ -48,6 +103,7 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
+                       ngx_socket_n " failed");
+         return NGX_ERROR;
+     }
++#endif  /* NGX_X_BOTH_PROXY */
+ 
+ 
+     c = ngx_get_connection(s, pc->log);
+@@ -93,7 +149,8 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
+     }
+ 
+     if (pc->local) {
+-
++#ifdef NGX_X_BOTH_PROXY
++#else
+ #if (NGX_HAVE_TRANSPARENT_PROXY)
+         if (pc->transparent) {
+             if (ngx_event_connect_set_transparent(pc, s) != NGX_OK) {
+@@ -155,6 +212,7 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
+ 
+             goto failed;
+         }
++#endif  /* NGX_X_BOTH_PROXY */
+     }
+ 
+     if (type == SOCK_STREAM) {
+@@ -202,6 +260,10 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
+     ngx_log_debug3(NGX_LOG_DEBUG_EVENT, pc->log, 0,
+                    "connect to %V, fd:%d #%uA", pc->name, s, c->number);
+ 
++#ifdef NGX_X_BOTH_PROXY
++//    c->shared = 1;
++
++#else
+     rc = connect(s, pc->sockaddr, pc->socklen);
+ 
+     if (rc == -1) {
+@@ -244,6 +306,7 @@ ngx_event_connect_peer(ngx_peer_connection_t *pc)
+             return NGX_DECLINED;
+         }
+     }
++#endif  /* NGX_X_BOTH_PROXY */
+ 
+     if (ngx_add_conn) {
+         if (rc == -1) {
+@@ -429,3 +492,66 @@ ngx_event_get_peer(ngx_peer_connection_t *pc, void *data)
+ {
+     return NGX_OK;
+ }
++
++ngx_int_t
++ngx_recv_fd(ngx_peer_connection_t* pc, int sock, int *fd)
++{
++    union {
++        struct cmsghdr h;
++        char   control[CMSG_SPACE(sizeof(int))];
++    } buffer;
++
++    struct msghdr msghdr;
++    char nothing;
++    struct iovec nothing_ptr[1];
++    struct cmsghdr *cmsg;
++
++    nothing_ptr[0].iov_base = &nothing;
++    nothing_ptr[0].iov_len = 1;
++    msghdr.msg_name = NULL;
++    msghdr.msg_namelen = 0;
++    msghdr.msg_iov = nothing_ptr;
++    msghdr.msg_iovlen = 1;
++    msghdr.msg_flags = 0;
++    msghdr.msg_control = buffer.control;
++    msghdr.msg_controllen = sizeof(struct cmsghdr) + sizeof(int);
++    cmsg = CMSG_FIRSTHDR(&msghdr);
++    cmsg->cmsg_len = msghdr.msg_controllen;
++    cmsg->cmsg_level = SOL_SOCKET;
++    cmsg->cmsg_type = SCM_RIGHTS;
++    ((int *)CMSG_DATA(cmsg))[0] = -1;
++
++    if(recvmsg(sock, &msghdr, 0) < 0){
++        ngx_log_debug2(NGX_LOG_DEBUG_EVENT, pc->log, 0, "recvmsg() failed: %d: %s", sock, strerror(errno));
++        return(-1);
++    }
++    (*fd) = ((int *)CMSG_DATA(cmsg))[0];
++    ngx_log_debug1(NGX_LOG_DEBUG_EVENT, pc->log, 0, "ngx_recv_fd() : %d", (*fd));
++
++    return((*fd)<0?-1:0);
++}
++ngx_int_t
++ngx_send_proxy_request(ngx_peer_connection_t* pc, int sock, char proxy_req)
++{
++    struct msghdr msghdr;
++    struct iovec nothing_ptr[1];
++    char   arg = proxy_req;
++
++    nothing_ptr[0].iov_base = &arg;
++    nothing_ptr[0].iov_len = 1;
++    msghdr.msg_name = NULL;
++    msghdr.msg_namelen = 0;
++    msghdr.msg_iov = nothing_ptr;
++    msghdr.msg_iovlen = 1;
++    msghdr.msg_flags = 0;
++    msghdr.msg_control = NULL;
++    msghdr.msg_controllen = 0;
++    //
++    if(sendmsg(sock, &msghdr, 0) < 0){
++        ngx_log_debug2(NGX_LOG_DEBUG_EVENT, pc->log, 0, "sendmsg() failed: %d: %s", sock, strerror(errno));
++        return(-1);
++    }
++    ngx_log_debug1(NGX_LOG_DEBUG_EVENT, pc->log, 0, "ngx_send_proxy_request() : %02x", proxy_req);
++
++    return(0);
++}
