@@ -15,10 +15,15 @@ if (UNIX AND NOT APPLE)
     SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D__LINUX__")
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__LINUX__")
 else()
-    INCLUDE_DIRECTORIES("/usr/local/Cellar/libevent/2.1.8/include")
+    execute_process(
+        COMMAND brew --prefix libevent
+        OUTPUT_VARIABLE LIBEVENT_PREFIX
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    INCLUDE_DIRECTORIES("${LIBEVENT_PREFIX}/include")
     INCLUDE_DIRECTORIES("/usr/local/include/")
     LINK_DIRECTORIES("/usr/local/lib")
-    LINK_DIRECTORIES("/usr/local/Cellar/libevent/2.1.8/lib")
+    LINK_DIRECTORIES("${LIBEVENT_PREFIX}/lib")
 endif()
 
 INCLUDE_DIRECTORIES("../natlibs/ext/")

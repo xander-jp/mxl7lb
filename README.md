@@ -18,6 +18,11 @@ mxl7lb/
 
 ## Dependencies
 
+### MACOS
+```
+brew install libevent2
+```
+
 ### acceptor
 
 - CMake 3.1+
@@ -65,7 +70,7 @@ go build -o client client.go
 ```bash
 cd natlibs
 mkdir build && cd build
-cmake ..
+cmake .. -DCMAKE_INSTALL_PREFIX=..
 make
 make install
 make test

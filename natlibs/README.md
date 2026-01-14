@@ -35,7 +35,7 @@ $ ldd ./libnatipc.so
 ```
 mkdir ./build
 cd ./build
-cmake ..
+cmake .. -DCMAKE_INSTALL_PREFIX=..
 make
 make install
 make test
