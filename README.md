@@ -85,8 +85,12 @@ patch -p1 < /path/to/mxl7lb/nginx-1.16.0.patch
 ```
 ### nginx compile/link
 
+https://nginx.org/download/nginx-1.16.0.tar.gz
+
+> brew --prefix pcre
+
 ```
- ./configure --with-debug --prefix=../nginx --with-cc-opt="-I/opt/homebrew/opt/pcre/include -Wno-error=unused-but-set-variable" --with-ld-opt="-L/opt/homebrew/opt/pcre/lib"
+./configure --with-debug --prefix=../nginx --with-cc-opt="-I/opt/homebrew/opt/pcre/include -Wno-error=unused-but-set-variable" --with-ld-opt="-L/opt/homebrew/opt/pcre/lib"
 
 make
 make install
