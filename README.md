@@ -96,6 +96,63 @@ make
 make install
 ```
 
+# Debug Run
+
+## nginx
+
+```
+./sbin/nginx -c ./conf/nginx.conf
+```
+
+### nginx.conf
+```
+#user  nobody;
+worker_processes  1;
+
+events {
+    worker_connections  1024;
+}
+
+
+http {
+    include       mime.types;
+    default_type  application/octet-stream;
+    sendfile        on;
+    keepalive_timeout  65;
+
+    server {
+        listen       8989;
+        server_name  localhost;
+        error_log  logs/error.log error;
+        error_page   500 502 503 504  /50x.html;
+        location = /50x.html {
+            root   html;
+        }
+
+        location / {
+            proxy_pass   http://127.0.0.1:4200;
+            access_log on;
+        }
+    }
+}
+```
+
+## acceptor
+```
+./acceptor -i 127.0.0.1 -p 9999 -u /tmp/Xaccepted_socket -v
+```
+
+## simulation
+
+```
+go run ./client_large_resp.go
+```
+
+## acceptor_cli
+```
+./acceptor_cli add 192.168.0.0 24
+```
+
 ## License
 
 MIT License
